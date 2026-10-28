@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>도서관 대출</title>
+<!-- 대출 규칙은 이 파일에 없습니다. 같은 폴더의 solution.py를 브라우저 안의 파이썬(Pyodide)으로 그대로 불러 씁니다. -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
+<script src="https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js"></script>
+<style>
+  :root {
+    --bg: #fbf7f2; --card: #ffffff; --ink: #3d3a36; --soft: #8a847c; --line: #efe7dc;
+    --accent: #f2a65a; --accent-dark: #d9853b; --mint: #e6f6ee; --mint-ink: #2f8a5b;
+    --rose: #fdebec; --rose-ink: #d64550; --field: #faf6f0;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 32px 16px 48px; background: var(--bg); color: var(--ink);
+    font-family: Pretendard, system-ui, -apple-system, "Malgun Gothic", sans-serif; line-height: 1.5;
+  }
+  .wrap { max-width: 560px; margin: 0 auto; }
+  header { text-align: center; margin-bottom: 28px; }
+  header .emoji { font-size: 2.6rem; }
+  h1 { margin: 6px 0 4px; font-size: 1.7rem; font-weight: 700; }
+  header p { margin: 0; color: var(--soft); }
+  .status {
+    margin: 14px auto 0; padding: 8px 16px; width: fit-content; border-radius: 999px;
+    font-size: 0.9rem; background: #f1ebe3; color: var(--soft);
+  }
+  .status.ready { background: var(--mint); color: var(--mint-ink); }
+  .status.error { background: var(--rose); color: var(--rose-ink); }
+  section {
+    background: var(--card); border-radius: 22px; padding: 22px 20px 20px; margin-bottom: 20px;
+    box-shadow: 0 6px 24px rgba(160, 130, 90, 0.10);
+  }
+  h2 { margin: 0 0 14px; font-size: 1.15rem; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .full { grid-column: 1 / -1; }
+  label { display: block; font-size: 0.88rem; color: var(--soft); }
+  .field { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
+  input, select {
+    width: 100%; font: inherit; font-size: 1rem; color: var(--ink);
+    padding: 11px 14px; border: 1.5px solid var(--line); border-radius: 14px; background: var(--field);
+    transition: border-color .15s, background .15s;
+  }
+  input:focus, select:focus { outline: none; border-color: var(--accent); background: #fff; }
+  .custom { display: none; margin-top: 8px; }
+  .custom.show { display: block; }
+  .unit { color: var(--soft); white-space: nowrap; }
+  .hint {
+    margin: 14px 0 0; padding: 10px 14px; font-size: 0.88rem; color: var(--soft);
+    background: var(--field); border-radius: 12px;
+  }
+  button {
+    width: 100%; margin-top: 16px; padding: 13px; font: inherit; font-size: 1.05rem; font-weight: 600;
+    color: #fff; background: var(--accent); border: none; border-radius: 16px; cursor: pointer;
+    transition: background .15s, transform .1s;
+  }
+  button:hover { background: var(--accent-dark); }
+  button:active { transform: scale(0.98); }
+  button:disabled { opacity: 0.5; cursor: wait; }
+  button.ghost { background: #f1ebe3; color: var(--ink); }
+  button.ghost:hover { background: #e8dfd3; }
+  .result {
+    display: none; margin-top: 16px; padding: 16px; border-radius: 18px; text-align: center;
+    animation: pop .25s ease-out;
+  }
+  .result .big { font-size: 2.4rem; font-weight: 800; line-height: 1.2; }
+  .result .sub { margin-top: 4px; font-size: 1.3rem; font-weight: 700; }
+  .ok { display: block; background: var(--mint); color: var(--mint-ink); }
+  .ok .sub.late { color: var(--accent-dark); }
+  .fail { display: block; background: var(--rose); color: var(--rose-ink); }
+  @keyframes pop { from { transform: scale(0.94); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+  .list { margin-top: 16px; display: flex; flex-direction: column; gap: 10px; }
+  .item {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 12px 16px; background: var(--field); border-radius: 14px;
+  }
+  .item .book { font-weight: 600; }
+  .item .due { color: var(--soft); }
+  .empty { margin-top: 16px; text-align: center; color: var(--soft); padding: 14px; }
+  @media (max-width: 420px) { .grid { grid-template-columns: 1fr; } }
+</style></head><body>
+<div class="wrap">
+<header>
+  <div class="emoji">📚</div>
+  <h1>도서관 대출</h1>
+  <p>읽고 싶은 책을 골라 편하게 빌리고 반납하세요</p>
+  <div class="status" id="status">⏳ 대출 프로그램을 불러오는 중이에요… (처음엔 몇 초 걸려요)</div>
+</header>
+
+<section>
+  <h2>📖 대출하기</h2>
+  <form id="borrow">
+    <div class="grid">
+      <label>책 번호<div class="field"><select name="book_pick"><option>B001</option><option>B002</option><option>B003</option><option>B004</option><option>B005</option><option value="__custom">직접 입력…</option></select></div>
+        <input class="custom" name="book_custom" placeholder="예: B009"></label>
+      <label>며칠째<div class="field"><input name="day" value="1" placeholder="예: 1" inputmode="numeric"><span class="unit">일째</span></div></label>
+      <label class="full">이름<div class="field"><input name="name" placeholder="예: 김민수"></div></label>
+    </div>
+    <p class="hint">💡 날짜는 도서관 문을 연 날부터 며칠째인지 숫자로 넣어 주세요.<br>대출 기간은 14일이에요. 1일째에 빌리면 15일째까지 반납하면 돼요.</p>
+    <button disabled>대출하기</button>
+  </form>
+  <div class="result" id="borrow-result"></div>
+</section>
+
+<section>
+  <h2>↩️ 반납하기</h2>
+  <form id="return">
+    <div class="grid">
+      <label>책 번호<div class="field"><select name="book_pick"><option>B001</option><option>B002</option><option>B003</option><option>B004</option><option>B005</option><option value="__custom">직접 입력…</option></select></div>
+        <input class="custom" name="book_custom" placeholder="예: B009"></label>
+      <label>며칠째<div class="field"><input name="day" value="1" placeholder="예: 10" inputmode="numeric"><span class="unit">일째</span></div></label>
+      <label class="full">빌린 사람 이름<div class="field"><input name="name" placeholder="예: 김민수"></div></label>
+    </div>
+    <p class="hint">💡 반납 기한이 지나면 연체 일수가 표시되고, 반납한 날부터 그 일수만큼 대출이 쉬어 가요.</p>
+    <button class="ghost" disabled>반납하기</button>
+  </form>
+  <div class="result" id="return-result"></div>
+</section>
+
+<section>
+  <h2>📋 대출 목록 보기</h2>
+  <form id="loans">
+    <label>이름<div class="field"><input name="name" placeholder="예: 김민수"></div></label>
+    <button class="ghost" disabled>대출 목록 보기</button>
+  </form>
+  <div id="loans-result"></div>
+</section>
+</div>
+
+<script>
+// 화면 입력을 solution.py의 LibraryLoan에 그대로 넘기는 연결 코드 (규칙 판단은 하지 않음)
+const GLUE = `
+import re, json
+from solution import LibraryLoan
+
+lib = LibraryLoan()  # 페이지가 열려 있는 동안 대출 기록을 기억
+
+def to_number(text):
+    text = str(text).strip()
+    if re.fullmatch(r"-?\\d+", text):
+        return int(text)
+    try:
+        return float(text)
+    except ValueError:
+        return text
+
+def api_borrow(book_id, name, day):
+    return lib.borrow(book_id, name, to_number(day)) is True
+
+def api_return(book_id, name, day):
+    r = lib.return_book(book_id, name, to_number(day))
+    return r if isinstance(r, int) and not isinstance(r, bool) else -1
+
+def api_loans(name):
+    return json.dumps([list(x) for x in lib.get_loans(name)], ensure_ascii=False)
+`;
+
+let api = null;
+
+async function start() {
+  const status = document.getElementById("status");
+  try {
+    const py = await loadPyodide();
+    const res = await fetch("solution.py", { cache: "no-store" });
+    if (!res.ok) throw new Error("solution.py 파일을 찾지 못했어요. index.html과 같은 곳에 올려 주세요.");
+    py.FS.writeFile("/home/pyodide/solution.py", await res.text());
+    py.runPython("import sys; sys.path.insert(0, '/home/pyodide')");
+    py.runPython(GLUE);
+    api = {
+      borrow: py.globals.get("api_borrow"),
+      giveBack: py.globals.get("api_return"),
+      loans: py.globals.get("api_loans"),
+    };
+    document.querySelectorAll("button").forEach(b => b.disabled = false);
+    status.className = "status ready";
+    status.textContent = "✅ 준비됐어요! 대출을 시작해 보세요";
+  } catch (err) {
+    status.className = "status error";
+    status.textContent = "⚠️ 불러오기 실패: " + err.message;
+    console.error(err);
+  }
+}
+
+// "직접 입력…"을 고르면 책 번호 입력칸이 나타남
+document.querySelectorAll("select[name=book_pick]").forEach(sel => {
+  sel.onchange = () => sel.form.elements.book_custom.classList.toggle("show", sel.value === "__custom");
+});
+
+function values(form) {
+  const v = Object.fromEntries(new FormData(form));
+  v.book = v.book_pick === "__custom" ? v.book_custom.trim() : v.book_pick;
+  return v;
+}
+function show(id, ok, sub, late) {
+  const el = document.getElementById(id);
+  el.className = "result";
+  void el.offsetWidth;  // 같은 결과가 연달아 나와도 애니메이션이 다시 보이게
+  el.className = "result " + (ok ? "ok" : "fail");
+  el.innerHTML = "";
+  const big = document.createElement("div");
+  big.className = "big"; big.textContent = ok ? "성공" : "실패";
+  el.append(big);
+  if (sub) {
+    const s = document.createElement("div");
+    s.className = "sub" + (late ? " late" : ""); s.textContent = sub;
+    el.append(s);
+  }
+}
+function safely(fn, fallback) {
+  try { return fn(); } catch (err) { console.error(err); return fallback; }
+}
+
+document.getElementById("borrow").onsubmit = e => {
+  e.preventDefault();
+  const v = values(e.target);
+  show("borrow-result", safely(() => api.borrow(v.book, v.name, v.day), false));
+};
+document.getElementById("return").onsubmit = e => {
+  e.preventDefault();
+  const v = values(e.target);
+  const late = safely(() => api.giveBack(v.book, v.name, v.day), -1);
+  if (late < 0) show("return-result", false);
+  else show("return-result", true, `연체 ${late}일`, late > 0);
+};
+document.getElementById("loans").onsubmit = e => {
+  e.preventDefault();
+  const v = values(e.target);
+  const loans = JSON.parse(api.loans(v.name));
+  const box = document.getElementById("loans-result");
+  box.innerHTML = "";
+  if (!loans.length) { box.innerHTML = '<p class="empty">빌린 책이 없어요 🌱</p>'; return; }
+  const list = document.createElement("div");
+  list.className = "list";
+  for (const [book, due] of loans) {
+    const row = document.createElement("div");
+    row.className = "item";
+    const b = document.createElement("span");
+    b.className = "book"; b.textContent = book;
+    const d = document.createElement("span");
+    d.className = "due"; d.textContent = `${due}일째까지 반납`;
+    row.append(b, d);
+    list.append(row);
+  }
+  box.append(list);
+};
+
+start();
+</script>
+</body></html>
